@@ -15,6 +15,9 @@ using ZXing;
 using static System.FormattableString;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.IO;
+using Windows.Graphics.Imaging;
+using Windows.Storage.Streams;
 
 namespace RNImageResizer
 {
@@ -46,20 +49,12 @@ namespace RNImageResizer
 
 
     [ReactMethod]
-    public void createResizedImage(String imagePath, int newWidth, int newHeight, String compressFormat,
+    public async void createResizedImage(String imagePath, int newWidth, int newHeight, String compressFormat,
                             int quality, int rotation, String outputPath, IPromise promise) {
 
-            //StorageFolder localFolder = ApplicationData.Current.LocalFolder;
-            //StorageFile imageFile = null;
-            //imageFile = await localFolder.GetFileAsync(imagePath);
-            if (!File.Exists(imagePath))
-                {
-                    RejectFileNotFound(promise, imagePath);
-                    return;
-                }
             SoftwareBitmap softwareBitmap;
 
-            using (IRandomAccessStream stream = await inputFile.OpenAsync(FileAccessMode.Read))
+            using (IRandomAccessStream stream = File.OpenRead(imagePath).AsRandomAccessStream())
             {
                 // Create the decoder from the stream
                 BitmapDecoder decoder = await BitmapDecoder.CreateAsync(stream);
@@ -67,12 +62,22 @@ namespace RNImageResizer
                 // Get the SoftwareBitmap representation of the file
                 softwareBitmap = await decoder.GetSoftwareBitmapAsync();
             }
-    
-                    JArray jarrayObj = new JArray();
-                foreach (var file in files) {
-                    jarrayObj.Add(PrepareFile(file).Result);
-                }
-                promise.Resolve(jarrayObj);
+            StorageFile outputFile = null;
+            if (outputPath == null)
+            {
+                StorageFolder localFolder = ApplicationData.Current.LocalFolder;
+                String imageName = System.IO.Path.GetFileName(imagePath);
+                outputFile = await localFolder.CreateFileAsync(imageName);
+            }
+            else {
+                outputFile = await StorageFile.GetFileFromPathAsync(outputPath);
+            }
+
+
+            await SaveSoftwareBitmapToFile(softwareBitmap, newWidth, newHeight,
+                             quality, rotation, outputFile);
+
+            promise.Resolve(PrepareFile(outputFile).Result);
 
     }
 
@@ -81,7 +86,11 @@ namespace RNImageResizer
             promise.Reject("FILE NOT EXIST", "No such image file, '" + imagePath + "'");
         }
 
-private async void SaveSoftwareBitmapToFile(SoftwareBitmap softwareBitmap, StorageFile outputFile)
+        // TODO: Implement rotation
+private async 
+Task
+SaveSoftwareBitmapToFile(SoftwareBitmap softwareBitmap, int newWidth, int newHeight,
+                            int quality, int rotation, StorageFile outputFile)
 {
     using (IRandomAccessStream stream = await outputFile.OpenAsync(FileAccessMode.ReadWrite))
     {
@@ -92,9 +101,9 @@ private async void SaveSoftwareBitmapToFile(SoftwareBitmap softwareBitmap, Stora
         encoder.SetSoftwareBitmap(softwareBitmap);
 
         // Set additional encoding parameters, if needed
-        encoder.BitmapTransform.ScaledWidth = 320;
-        encoder.BitmapTransform.ScaledHeight = 240;
-        encoder.BitmapTransform.Rotation = Windows.Graphics.Imaging.BitmapRotation.Clockwise90Degrees;
+        encoder.BitmapTransform.ScaledWidth = (uint)newWidth;
+        encoder.BitmapTransform.ScaledHeight = (uint)newHeight;
+        encoder.BitmapTransform.Rotation = Windows.Graphics.Imaging.BitmapRotation.None;
         encoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
         encoder.IsThumbnailGenerated = true;
 
@@ -125,28 +134,6 @@ private async void SaveSoftwareBitmapToFile(SoftwareBitmap softwareBitmap, Stora
     }
 }
 
-
-private BitmapImage ResizedImage(BitmapImage sourceImage, int maxWidth, int maxHeight)
-{
-    var origHeight = sourceImage.PixelHeight;
-    var origWidth = sourceImage.PixelWidth;
-    var ratioX = maxWidth/(float) origWidth;
-    var ratioY = maxHeight/(float) origHeight;
-    var ratio = Math.Min(ratioX, ratioY);
-    var newHeight = (int) (origHeight * ratio);
-    var newWidth = (int) (origWidth * ratio);
-
-    sourceImage.DecodePixelWidth = newWidth;
-    sourceImage.DecodePixelHeight = newHeight;
-
-    return sourceImage;
-}
-
-        private static string GetDirectory(String filePath)
-        {
-            return file.Path.Replace("\\" + file.Name, "");
-        }
-
         private async Task<JObject> PrepareFile(StorageFile file)
         {
             var basicProperties = await file.GetBasicPropertiesAsync();
@@ -159,11 +146,6 @@ private BitmapImage ResizedImage(BitmapImage sourceImage, int maxWidth, int maxH
                 };
         }
 
-
-        private void OnInvoked(Object error, Object success, ICallback callback)
-        {
-            callback.Invoke(error, success);
-        }
 
         private static async void RunOnDispatcher(DispatchedHandler action)
         {
