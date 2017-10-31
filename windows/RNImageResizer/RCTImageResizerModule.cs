@@ -63,7 +63,7 @@ namespace RNImageResizer
             {
                 StorageFolder localFolder = ApplicationData.Current.LocalFolder;
                 String imageName = System.IO.Path.GetFileName(imagePath);
-                outputFile = await localFolder.CreateFileAsync(imageName);
+                outputFile = await localFolder.CreateFileAsync(imageName, CreationCollisionOption.ReplaceExisting);
             }
             else {
                 outputFile = await StorageFile.GetFileFromPathAsync(outputPath);
