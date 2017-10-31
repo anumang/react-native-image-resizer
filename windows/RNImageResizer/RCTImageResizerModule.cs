@@ -18,10 +18,11 @@ using System.Threading.Tasks;
 using System.IO;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
+using Windows.Foundation;
 
 namespace RNImageResizer
 {
-    class RCTImageResizerModule : ReactContextNativeModuleBase, ILifecycleEventListener
+    class RCTImageResizerModule : ReactContextNativeModuleBase
     {
 
 	private static readonly String FIELD_URI = "uri";
@@ -40,11 +41,6 @@ namespace RNImageResizer
             {
                 return "ImageResizer";
             }
-        }
-
-        public override void Initialize()
-        {
-            Context.AddLifecycleEventListener(this);
         }
 
 
@@ -79,7 +75,7 @@ namespace RNImageResizer
 
             promise.Resolve(PrepareFile(outputFile).Result);
 
-    }
+        }
 
         private void RejectFileNotFound(IPromise promise, String imagePath)
         {
@@ -94,17 +90,18 @@ SaveSoftwareBitmapToFile(SoftwareBitmap softwareBitmap, int newWidth, int newHei
 {
     using (IRandomAccessStream stream = await outputFile.OpenAsync(FileAccessMode.ReadWrite))
     {
-        // Create an encoder with the desired format
-        BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, stream);
+                BitmapPropertySet bitmapPropertiesSet = new BitmapPropertySet();
+                double qualitypercent = (quality % 100) / 100.0;
+                bitmapPropertiesSet.Add("ImageQuality", new BitmapTypedValue(qualitypercent, PropertyType.Single));
+                // Create an encoder with the desired format
+                BitmapEncoder encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, stream, bitmapPropertiesSet);
 
         // Set the software bitmap
         encoder.SetSoftwareBitmap(softwareBitmap);
-
         // Set additional encoding parameters, if needed
         encoder.BitmapTransform.ScaledWidth = (uint)newWidth;
         encoder.BitmapTransform.ScaledHeight = (uint)newHeight;
         encoder.BitmapTransform.Rotation = Windows.Graphics.Imaging.BitmapRotation.None;
-        encoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
         encoder.IsThumbnailGenerated = true;
 
         try
@@ -136,7 +133,7 @@ SaveSoftwareBitmapToFile(SoftwareBitmap softwareBitmap, int newWidth, int newHei
 
         private async Task<JObject> PrepareFile(StorageFile file)
         {
-            var basicProperties = await file.GetBasicPropertiesAsync();
+            var basicProperties = await file.GetBasicPropertiesAsync().AsTask().ConfigureAwait(false);
 
             return new JObject {
                     { FIELD_URI, file.Path },
